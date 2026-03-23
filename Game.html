@@ -149,33 +149,9 @@
         gap: 20px;
       }
 
-      /* Tutorial Screen */
-      #tutorialScreen {
-        background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
-        padding: 40px;
-      }
-      #tutorialScreen h2 {
-        color: #f0e68c;
-        font-size: 24px;
-        margin-bottom: 30px;
-      }
-      .tutorial-content {
-        color: #a0c4e8;
-        font-size: 11px;
-        line-height: 2.4;
-        max-width: 800px;
-        text-align: left;
-      }
-      .tutorial-content .key {
-        background: #0f3460;
-        border: 1px solid #c4a35a;
-        color: #f0e68c;
-        padding: 2px 8px;
-        border-radius: 3px;
-        font-size: 10px;
-      }
-      #tutorialScreen .menu-btn {
-        margin-top: 30px;
+      /* Tutorial overlay (in-game) */
+      .tutorial-overlay-msg {
+        /* styled via canvas */
       }
 
       /* Settings Screen */
@@ -389,38 +365,12 @@
         <div class="prompt-buttons">
           <button
             class="menu-btn safe-btn"
-            onclick="showScreen('tutorialScreen')"
+            onclick="startTutorial()"
           >
             YES
           </button>
           <button class="menu-btn" onclick="startGame()">NO, START GAME</button>
         </div>
-      </div>
-
-      <!-- Screen 4: Tutorial -->
-      <div id="tutorialScreen" class="screen">
-        <h2>HOW TO PLAY</h2>
-        <div class="tutorial-content">
-          <p>
-            <span class="key">&uarr;</span> /
-            <span class="key">&darr;</span> &mdash; Aim your gun up and down
-          </p>
-          <p>
-            <span class="key">SPACE</span> &mdash; Shoot (bullets ricochet off
-            walls!)
-          </p>
-          <p><span class="key">R</span> &mdash; Reload your ammo</p>
-          <p><span class="key">ESC</span> &mdash; Pause the game</p>
-          <br />
-          <p>Your cowboy stands in the bottom-left corner.</p>
-          <p>
-            Monsters come from the right - shoot them before they reach you!
-          </p>
-          <p>Balls split into smaller balls when hit.</p>
-          <p>If a monster hits or passes you, you lose a life!</p>
-          <p>Use ricochet shots for tricky angles!</p>
-        </div>
-        <button class="menu-btn" onclick="startGame()">START GAME</button>
       </div>
 
       <!-- Screen 7: Settings (Main Menu) -->
@@ -627,6 +577,50 @@
         invincible: false,
         invincibleTimer: 0,
       };
+
+      // In-game tutorial state
+      let tutorial = {
+        active: false,
+        step: 0,
+        phase: "intro", // "intro" = showing instruction, "play" = waiting for action, "done" = step complete
+        aimed: false,
+        shot: false,
+        hitBall: false,
+        reloaded: false,
+        msgTimer: 0,
+        flashTimer: 0,
+      };
+
+      const tutorialSteps = [
+        {
+          title: "STAP 1: RICHTEN",
+          msg: "Gebruik \u2191 en \u2193 om je wapen\nomhoog en omlaag te richten.",
+          hint: "Probeer nu te richten!",
+          waitFor: "aim",
+          successMsg: "Goed zo!",
+        },
+        {
+          title: "STAP 2: SCHIETEN",
+          msg: "Druk op SPATIE om te schieten.\nJe kogels kaatsen tegen muren!",
+          hint: "Schiet nu!",
+          waitFor: "shoot",
+          successMsg: "Mooi schot!",
+        },
+        {
+          title: "STAP 3: RAAK DE BAL",
+          msg: "Richt op de bal en schiet\nom hem te vernietigen.",
+          hint: "Raak de bal!",
+          waitFor: "hit",
+          successMsg: "Raak!",
+        },
+        {
+          title: "STAP 4: HERLADEN",
+          msg: "Druk op R om handmatig\nte herladen.",
+          hint: "Druk nu op R!",
+          waitFor: "reload",
+          successMsg: "Perfect!",
+        },
+      ];
 
       let cowboy = {
         x: 60,
@@ -856,11 +850,282 @@
         document.activeElement.blur();
         canvas.focus();
 
-        nextRound();
+        if (!tutorial.active) {
+          nextRound();
+        } else {
+          // Spawn one slow ball for the tutorial
+          spawnTutorialBall();
+        }
         if (!gameLoopStarted) {
           gameLoopStarted = true;
           gameLoop();
         }
+      }
+
+      function startTutorial() {
+        tutorial = {
+          active: true,
+          step: 0,
+          phase: "intro",
+          aimed: false,
+          shot: false,
+          hitBall: false,
+          reloaded: false,
+          msgTimer: 0,
+          flashTimer: 0,
+        };
+        startGame();
+      }
+
+      function spawnTutorialBall() {
+        // Spawn a single slow-moving ball for practice
+        balls.push({
+          x: 900,
+          y: 300,
+          radius: 30,
+          size: 2,
+          vx: -0.5,
+          vy: 0.3,
+          color: "#e94560",
+          hit: false,
+        });
+      }
+
+      function completeTutorialStep() {
+        // Show success, then move to "done" phase
+        tutorial.phase = "done";
+        tutorial.msgTimer = 0;
+      }
+
+      function advanceTutorial() {
+        tutorial.step++;
+        tutorial.msgTimer = 0;
+        tutorial.flashTimer = 0;
+        if (tutorial.step >= tutorialSteps.length) {
+          // All steps done, show exit screen
+          tutorial.phase = "exit";
+          balls = [];
+          bullets = [];
+          particles = [];
+          return;
+        }
+        tutorial.phase = "intro";
+      }
+
+      function finishTutorial() {
+        // Tutorial done, start real game
+        tutorial.active = false;
+        tutorial.phase = "";
+        game.score = 0;
+        game.round = 0;
+        game.lives = diffConfig[settings.difficulty].lives;
+        game.ammo = diffConfig[settings.difficulty].ammo;
+        game.maxAmmo = diffConfig[settings.difficulty].ammo;
+        game.reloading = false;
+        game.reloadTimer = 0;
+        balls = [];
+        bullets = [];
+        particles = [];
+        nextRound();
+      }
+
+      function updateTutorial() {
+        if (!tutorial.active) return;
+        tutorial.flashTimer++;
+
+        if (tutorial.phase === "intro") {
+          // Waiting for any key press
+          return;
+        }
+
+        if (tutorial.phase === "done") {
+          // Waiting for any key press
+          return;
+        }
+
+        if (tutorial.phase === "exit") {
+          // Waiting for SPACE to start real game
+          return;
+        }
+
+        if (tutorial.phase !== "play") return;
+
+        const step = tutorialSteps[tutorial.step];
+        if (step.waitFor === "aim" && tutorial.aimed) {
+          completeTutorialStep();
+        } else if (step.waitFor === "shoot" && tutorial.shot) {
+          completeTutorialStep();
+        } else if (step.waitFor === "hit" && tutorial.hitBall) {
+          completeTutorialStep();
+        } else if (step.waitFor === "reload" && tutorial.reloaded) {
+          completeTutorialStep();
+        }
+      }
+
+      function drawTutorialOverlay() {
+        if (!tutorial.active) return;
+        const cx = canvas.width / 2;
+
+        ctx.save();
+
+        // Exit screen - tutorial complete
+        if (tutorial.phase === "exit") {
+          // Full screen dark overlay
+          ctx.fillStyle = "rgba(10, 10, 26, 0.85)";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // Big box
+          const boxW = 600;
+          const boxH = 220;
+          const boxX = (canvas.width - boxW) / 2;
+          const boxY = (canvas.height - boxH) / 2 - 30;
+
+          ctx.fillStyle = "rgba(15, 52, 96, 0.95)";
+          ctx.strokeStyle = "#c4a35a";
+          ctx.lineWidth = 3;
+          roundRect(ctx, boxX, boxY, boxW, boxH, 12);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#4ecdc4";
+          ctx.font = '24px "Press Start 2P"';
+          ctx.fillText("TUTORIAL KLAAR!", cx, boxY + 60);
+
+          ctx.fillStyle = "#a0c4e8";
+          ctx.font = '12px "Press Start 2P"';
+          ctx.fillText("Je kent nu alle besturing.", cx, boxY + 110);
+          ctx.fillText("Veel succes, cowboy!", cx, boxY + 140);
+
+          // Blinking prompt
+          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
+            ctx.fillStyle = "#f0e68c";
+            ctx.font = '14px "Press Start 2P"';
+            ctx.fillText("Druk op SPATIE om te beginnen", cx, boxY + 190);
+          }
+
+          ctx.textAlign = "left";
+          ctx.restore();
+          return;
+        }
+
+        if (tutorial.step >= tutorialSteps.length) { ctx.restore(); return; }
+        const step = tutorialSteps[tutorial.step];
+
+        if (tutorial.phase === "intro") {
+          // Dark overlay with step introduction
+          ctx.fillStyle = "rgba(10, 10, 26, 0.75)";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          const boxW = 550;
+          const boxH = 180;
+          const boxX = (canvas.width - boxW) / 2;
+          const boxY = (canvas.height - boxH) / 2 - 20;
+
+          ctx.fillStyle = "rgba(15, 52, 96, 0.95)";
+          ctx.strokeStyle = "#c4a35a";
+          ctx.lineWidth = 3;
+          roundRect(ctx, boxX, boxY, boxW, boxH, 12);
+          ctx.fill();
+          ctx.stroke();
+
+          // Step counter
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#c4a35a";
+          ctx.font = '10px "Press Start 2P"';
+          ctx.fillText((tutorial.step + 1) + " / " + tutorialSteps.length, cx, boxY + 30);
+
+          // Title
+          ctx.fillStyle = "#f0e68c";
+          ctx.font = '20px "Press Start 2P"';
+          ctx.fillText(step.title, cx, boxY + 70);
+
+          // Description (multiline)
+          ctx.fillStyle = "#a0c4e8";
+          ctx.font = '12px "Press Start 2P"';
+          const lines = step.msg.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], cx, boxY + 110 + i * 24);
+          }
+
+          // Blinking "press any key" hint
+          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
+            ctx.fillStyle = "#f0e68c";
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillText("Druk op een toets om verder te gaan", cx, boxY + 170);
+          }
+
+          ctx.textAlign = "left";
+          ctx.restore();
+          return;
+        }
+
+        if (tutorial.phase === "play") {
+          // Small hint bar at top during gameplay
+          const boxW = 500;
+          const boxH = 50;
+          const boxX = (canvas.width - boxW) / 2;
+          const boxY = 60;
+
+          ctx.fillStyle = "rgba(15, 52, 96, 0.9)";
+          ctx.strokeStyle = "#c4a35a";
+          ctx.lineWidth = 2;
+          roundRect(ctx, boxX, boxY, boxW, boxH, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          // Step indicator
+          ctx.fillStyle = "#c4a35a";
+          ctx.font = '8px "Press Start 2P"';
+          ctx.textAlign = "center";
+          ctx.fillText(step.title, cx, boxY + 18);
+
+          // Blinking hint text
+          if (Math.floor(tutorial.flashTimer / 20) % 2 === 0) {
+            ctx.fillStyle = "#f0e68c";
+          } else {
+            ctx.fillStyle = "#ffffff";
+          }
+          ctx.font = '12px "Press Start 2P"';
+          ctx.fillText(step.hint, cx, boxY + 40);
+
+          ctx.textAlign = "left";
+          ctx.restore();
+          return;
+        }
+
+        if (tutorial.phase === "done") {
+          // Success message
+          const boxW = 400;
+          const boxH = 90;
+          const boxX = (canvas.width - boxW) / 2;
+          const boxY = 70;
+
+          ctx.fillStyle = "rgba(30, 120, 80, 0.9)";
+          ctx.strokeStyle = "#4ecdc4";
+          ctx.lineWidth = 2;
+          roundRect(ctx, boxX, boxY, boxW, boxH, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#4ecdc4";
+          ctx.font = '18px "Press Start 2P"';
+          ctx.textAlign = "center";
+          ctx.fillText(step.successMsg, cx, boxY + 35);
+
+          // Blinking hint
+          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
+            ctx.fillStyle = "#ffffffaa";
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillText("Druk op een toets", cx, boxY + 70);
+          }
+
+          ctx.textAlign = "left";
+          ctx.restore();
+          return;
+        }
+
+        ctx.restore();
       }
 
       function nextRound() {
@@ -871,7 +1136,9 @@
           cfg.maxBalls,
         );
         for (let i = 0; i < count; i++) {
-          spawnBall(2);
+          const sizes = [2, 3];
+          const size = sizes[Math.floor(Math.random() * sizes.length)];
+          spawnBall(size);
         }
         playSound("roundclear");
       }
@@ -892,7 +1159,7 @@
           size,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
-          color: size === 2 ? "#e94560" : size === 1 ? "#f0e68c" : "#4ecdc4",
+          color: size === 3 ? "#4ecdc4" : size === 2 ? "#e94560" : "#f0e68c",
           hit: false,
         });
       }
@@ -902,7 +1169,11 @@
           playSound("empty");
           return;
         }
+        tutorial.shot = true;
         game.ammo--;
+        if (game.ammo <= 0) {
+          reload();
+        }
         const angle = cowboy.aimAngle;
         const gunX = cowboy.x + 40;
         const gunY = cowboy.y - 15;
@@ -919,8 +1190,9 @@
         screenShake = 3;
       }
 
-      function reload() {
+      function reload(manual) {
         if (game.reloading || game.ammo === game.maxAmmo) return;
+        if (manual) tutorial.reloaded = true;
         game.reloading = true;
         game.reloadTimer = game.reloadDuration;
         playSound("reload");
@@ -982,9 +1254,12 @@
 
         // Cowboy is fixed at bottom-left, no movement
 
+        // Tutorial update
+        updateTutorial();
+
         // Aim angle (arrow keys up/down)
-        if (cowboy.aimUp) cowboy.aimAngle -= cowboy.aimSpeed;
-        if (cowboy.aimDown) cowboy.aimAngle += cowboy.aimSpeed;
+        if (cowboy.aimUp) { cowboy.aimAngle -= cowboy.aimSpeed; tutorial.aimed = true; }
+        if (cowboy.aimDown) { cowboy.aimAngle += cowboy.aimSpeed; tutorial.aimed = true; }
         // Clamp aim angle: -80deg to +80deg (roughly forward-facing)
         cowboy.aimAngle = Math.max(
           -Math.PI * 0.44,
@@ -1058,37 +1333,19 @@
               playSound("hit");
               screenShake = 6;
               game.score += ball.size * 100;
+              tutorial.hitBall = true;
 
-              if (ball.size > 1) {
-                // Split into 2 smaller balls
-                for (let k = 0; k < 2; k++) {
-                  const newSize = ball.size - 1;
-                  const newRadius = newSize * 15;
-                  const angle = Math.random() * Math.PI * 2;
-                  const cfg = diffConfig[settings.difficulty];
-                  const speed =
-                    cfg.ballSpeed * (3 / newSize) * (0.8 + Math.random() * 0.4);
-                  balls.push({
-                    x: ball.x + (k === 0 ? -20 : 20),
-                    y: ball.y,
-                    radius: newRadius,
-                    size: newSize,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    color: newSize === 1 ? "#f0e68c" : "#4ecdc4",
-                    hit: false,
-                  });
-                }
-              }
               balls.splice(j, 1);
               break;
             }
           }
         }
 
-        // Update balls
+        // Update balls (freeze during tutorial popups)
         const groundY = canvas.height - 80;
+        const tutorialFrozen = tutorial.active && tutorial.phase !== "play";
         for (let i = balls.length - 1; i >= 0; i--) {
+          if (tutorialFrozen) continue;
           const ball = balls[i];
           ball.x += ball.vx;
           ball.y += ball.vy;
@@ -1121,6 +1378,11 @@
             // Remove the ball
             balls.splice(i, 1);
 
+            if (tutorial.active) {
+              // No damage during tutorial, just respawn
+              continue;
+            }
+
             if (!game.invincible) {
               game.lives--;
               game.invincible = true;
@@ -1136,9 +1398,13 @@
           }
         }
 
-        // Check round clear
-        if (balls.length === 0 && game.running) {
+        // Check round clear (not during tutorial)
+        if (balls.length === 0 && game.running && !tutorial.active) {
           nextRound();
+        }
+        // During tutorial, respawn ball if it goes off screen
+        if (tutorial.active && balls.length === 0 && tutorial.step <= 2) {
+          spawnTutorialBall();
         }
 
         // Update particles
@@ -1589,7 +1855,7 @@
         let dvx = Math.cos(angle) * 10;
         let dvy = Math.sin(angle) * 10;
         let bounces = 0;
-        for (let step = 0; step < 60 && bounces <= 1; step++) {
+        for (let step = 0; step < 25 && bounces <= 1; step++) {
           const nx = px + dvx;
           const ny = py + dvy;
           if (ny <= 0 || ny >= canvas.height - 80) {
@@ -1656,6 +1922,9 @@
         // Draw HUD
         drawHUD();
 
+        // Draw tutorial overlay
+        drawTutorialOverlay();
+
         ctx.restore();
       }
 
@@ -1703,6 +1972,27 @@
 
         if (!game.running || game.paused) return;
 
+        // Tutorial exit: SPACE starts real game
+        if (tutorial.active && tutorial.phase === "exit") {
+          if (e.key === " ") {
+            finishTutorial();
+            e.preventDefault();
+          }
+          return;
+        }
+
+        // Tutorial intro/done: any key press advances
+        if (tutorial.active && tutorial.phase === "intro") {
+          tutorial.phase = "play";
+          e.preventDefault();
+          return;
+        }
+        if (tutorial.active && tutorial.phase === "done") {
+          advanceTutorial();
+          e.preventDefault();
+          return;
+        }
+
         // Aim (Arrow keys)
         if (e.key === "ArrowUp") {
           cowboy.aimUp = true;
@@ -1721,7 +2011,7 @@
 
         // Reload (R)
         if (e.key === "r" || e.key === "R") {
-          reload();
+          reload(true);
         }
       });
 
@@ -1758,7 +2048,7 @@
         const barY = canvas.height - 80;
         if (clickY >= barY) {
           if (clickX >= 320 && clickX <= 360) {
-            reload();
+            reload(true);
             return;
           }
         }
