@@ -202,6 +202,58 @@
         min-width: 40px;
         text-align: right;
       }
+      .controls-list {
+        width: 500px;
+        margin-top: 30px;
+        color: #a0c4e8;
+        font-size: 12px;
+      }
+      .controls-list h3 {
+        color: #f0e68c;
+        font-size: 14px;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .control-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 4px;
+        border-bottom: 1px solid #0f3460;
+      }
+      .control-row .key {
+        color: #c4a35a;
+        background: #16213e;
+        border: 1px solid #0f3460;
+        border-radius: 3px;
+        padding: 4px 10px;
+        min-width: 80px;
+        text-align: center;
+      }
+      .diff-row {
+        display: flex;
+        gap: 8px;
+      }
+      .diff-mini {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        padding: 8px 12px;
+        background: transparent;
+        color: #c4a35a;
+        border: 1px solid #c4a35a44;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .diff-mini.easy { border-color: #4ecdc4; color: #4ecdc4; }
+      .diff-mini.medium { border-color: #f0e68c; color: #f0e68c; }
+      .diff-mini.hard { border-color: #e94560; color: #e94560; }
+      .diff-mini:hover:not(.active) {
+        background: #c4a35a22;
+      }
+      .diff-mini.active.easy { background: #4ecdc4; color: #1a1a2e; }
+      .diff-mini.active.medium { background: #f0e68c; color: #1a1a2e; }
+      .diff-mini.active.hard { background: #e94560; color: #fff; }
 
       /* Pause Screen */
       #pauseScreen {
@@ -275,16 +327,6 @@
         height: 100%;
       }
 
-      /* Cowboy silhouette decoration on main menu */
-      .cowboy-deco {
-        position: absolute;
-        bottom: 40px;
-        right: 60px;
-        font-size: 80px;
-        opacity: 0.15;
-        color: #c4a35a;
-      }
-
       /* Back button */
       .back-btn {
         position: absolute;
@@ -336,7 +378,9 @@
         <button class="menu-btn" onclick="showScreen('settingsMain')">
           SETTINGS
         </button>
-        <div class="cowboy-deco">&#x1F920;</div>
+        <button class="menu-btn warn-btn" onclick="exitGame()">
+          EXIT
+        </button>
       </div>
 
       <!-- Screen 2: Difficulty Select -->
@@ -361,6 +405,9 @@
 
       <!-- Screen 3: Tutorial Prompt -->
       <div id="tutorialPrompt" class="screen">
+        <button class="back-btn" onclick="showScreen('difficultyScreen')">
+          &lt; BACK
+        </button>
         <h2>DO YOU WANT TO<br />PLAY THE TUTORIAL?</h2>
         <div class="prompt-buttons">
           <button
@@ -380,7 +427,7 @@
         </button>
         <h2>SETTINGS</h2>
         <div class="setting-row">
-          <label>SFX VOLUME</label>
+          <label>VOLUME</label>
           <div class="slider-container">
             <input
               type="range"
@@ -393,40 +440,23 @@
             <span class="slider-value" id="sfxValMain">70</span>
           </div>
         </div>
-        <div class="setting-row">
-          <label>MUSIC VOLUME</label>
-          <div class="slider-container">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value="50"
-              id="musicVolumeMain"
-              oninput="updateSetting('music', this.value)"
-            />
-            <span class="slider-value" id="musicValMain">50</span>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label>DIFFICULTY</label>
-          <div class="slider-container">
-            <button
-              class="menu-btn"
-              style="padding: 8px 16px; min-width: auto; font-size: 10px"
-              id="diffDisplayMain"
-              onclick="cycleDifficulty()"
-            >
-              MEDIUM
-            </button>
-          </div>
+        <div class="controls-list">
+          <h3>CONTROLS</h3>
+          <div class="control-row"><span class="key">&uarr; / &darr;</span><span>AIM UP / DOWN</span></div>
+          <div class="control-row"><span class="key">SPACE</span><span>SHOOT</span></div>
+          <div class="control-row"><span class="key">R</span><span>RELOAD</span></div>
+          <div class="control-row"><span class="key">ESC</span><span>PAUSE</span></div>
         </div>
       </div>
 
       <!-- Screen 8: Settings (In-Game) -->
       <div id="settingsGame" class="screen settings-screen">
+        <button class="back-btn" onclick="closeGameSettings()">
+          &lt; BACK
+        </button>
         <h2>SETTINGS</h2>
         <div class="setting-row">
-          <label>SFX VOLUME</label>
+          <label>VOLUME</label>
           <div class="slider-container">
             <input
               type="range"
@@ -440,39 +470,20 @@
           </div>
         </div>
         <div class="setting-row">
-          <label>MUSIC VOLUME</label>
-          <div class="slider-container">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value="50"
-              id="musicVolumeGame"
-              oninput="updateSetting('music', this.value)"
-            />
-            <span class="slider-value" id="musicValGame">50</span>
-          </div>
-        </div>
-        <div class="setting-row">
           <label>DIFFICULTY</label>
-          <div class="slider-container">
-            <button
-              class="menu-btn"
-              style="padding: 8px 16px; min-width: auto; font-size: 10px"
-              id="diffDisplayGame"
-              onclick="tryChangeDifficulty()"
-            >
-              MEDIUM
-            </button>
+          <div class="diff-row">
+            <button class="diff-mini easy" data-diff="easy" onclick="tryChangeDifficultyTo('easy')">EASY</button>
+            <button class="diff-mini medium" data-diff="medium" onclick="tryChangeDifficultyTo('medium')">MEDIUM</button>
+            <button class="diff-mini hard" data-diff="hard" onclick="tryChangeDifficultyTo('hard')">HARD</button>
           </div>
         </div>
-        <button
-          class="menu-btn"
-          style="margin-top: 20px"
-          onclick="closeGameSettings()"
-        >
-          BACK
-        </button>
+        <div class="controls-list">
+          <h3>CONTROLS</h3>
+          <div class="control-row"><span class="key">&uarr; / &darr;</span><span>AIM UP / DOWN</span></div>
+          <div class="control-row"><span class="key">SPACE</span><span>SHOOT</span></div>
+          <div class="control-row"><span class="key">R</span><span>RELOAD</span></div>
+          <div class="control-row"><span class="key">ESC</span><span>PAUSE</span></div>
+        </div>
       </div>
 
       <!-- Screen 9: Difficulty Change Warning -->
@@ -579,11 +590,14 @@
       };
 
       // In-game tutorial state
+      // phases: "intro" = instruction modal, "play" = waiting for action,
+      //         "success" = auto-advancing success message, "exit" = final screen
       let tutorial = {
         active: false,
         step: 0,
-        phase: "intro", // "intro" = showing instruction, "play" = waiting for action, "done" = step complete
-        aimed: false,
+        phase: "intro",
+        aimedUp: false,
+        aimedDown: false,
         shot: false,
         hitBall: false,
         reloaded: false,
@@ -591,34 +605,61 @@
         flashTimer: 0,
       };
 
+      // Frames the success message stays before auto-advancing (~60fps)
+      const SUCCESS_HOLD_FRAMES = 110;
+
       const tutorialSteps = [
         {
           title: "STAP 1: RICHTEN",
-          msg: "Gebruik \u2191 en \u2193 om je wapen\nomhoog en omlaag te richten.",
-          hint: "Probeer nu te richten!",
+          msg: "Gebruik \u2191 en \u2193 om je wapen\nomhoog en omlaag te richten.\nProbeer beide richtingen!",
+          hint: "Druk \u2191 \u00e9n \u2193!",
           waitFor: "aim",
-          successMsg: "Goed zo!",
+          successMsg: "Goed gericht!",
         },
         {
           title: "STAP 2: SCHIETEN",
           msg: "Druk op SPATIE om te schieten.\nJe kogels kaatsen tegen muren!",
-          hint: "Schiet nu!",
+          hint: "Druk op SPATIE!",
           waitFor: "shoot",
           successMsg: "Mooi schot!",
         },
         {
           title: "STAP 3: RAAK DE BAL",
-          msg: "Richt op de bal en schiet\nom hem te vernietigen.",
+          msg: "Schiet de bal stuk.\nGebruik kaatsen voor lastige hoeken!",
           hint: "Raak de bal!",
           waitFor: "hit",
           successMsg: "Raak!",
         },
         {
           title: "STAP 4: HERLADEN",
-          msg: "Druk op R om handmatig\nte herladen.",
-          hint: "Druk nu op R!",
+          msg: "Als je munitie laag is, druk op R\nom je revolver te herladen.",
+          hint: "Druk op R om te herladen!",
           waitFor: "reload",
-          successMsg: "Perfect!",
+          successMsg: "Klaar om te vuren!",
+        },
+        {
+          title: "STAP 5: JE HUD",
+          msg: "Dit zijn je belangrijke meters\nboven aan het scherm.",
+          hint: "",
+          waitFor: "info",
+          successMsg: "",
+          hudCallouts: true,
+        },
+        {
+          title: "STAP 6: PAS OP!",
+          msg: "Als een bal jou raakt of voorbij je\nlinks passeert, verlies je een leven.\nBij 0 levens is het GAME OVER.",
+          hint: "",
+          waitFor: "info",
+          successMsg: "",
+          warning: true,
+        },
+        {
+          title: "STAP 7: HET DOEL",
+          msg: "Er is geen einde \u2014 overleef\nzo lang mogelijk en verdien\nzoveel mogelijk punten.\nElke ronde wordt het zwaarder!",
+          hint: "",
+          waitFor: "info",
+          successMsg: "",
+          goal: true,
         },
       ];
 
@@ -762,8 +803,13 @@
 
       function updateDiffDisplays() {
         const label = settings.difficulty.toUpperCase();
-        document.getElementById("diffDisplayMain").textContent = label;
-        document.getElementById("diffDisplayGame").textContent = label;
+        const main = document.getElementById("diffDisplayMain");
+        const game = document.getElementById("diffDisplayGame");
+        if (main) main.textContent = label;
+        if (game) game.textContent = label;
+        document.querySelectorAll("#settingsGame .diff-mini").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.diff === settings.difficulty);
+        });
       }
 
       function cycleDifficulty() {
@@ -777,6 +823,12 @@
         const order = ["easy", "medium", "hard"];
         const idx = order.indexOf(settings.difficulty);
         pendingDifficulty = order[(idx + 1) % 3];
+        showScreen("diffChangeWarning");
+      }
+
+      function tryChangeDifficultyTo(diff) {
+        if (diff === settings.difficulty) return;
+        pendingDifficulty = diff;
         showScreen("diffChangeWarning");
       }
 
@@ -795,19 +847,27 @@
       }
 
       function updateSetting(type, value) {
+        const setIfExists = (id, prop, val) => {
+          const el = document.getElementById(id);
+          if (el) el[prop] = val;
+        };
         if (type === "sfx") {
           settings.sfxVolume = parseInt(value);
-          document.getElementById("sfxValMain").textContent = value;
-          document.getElementById("sfxValGame").textContent = value;
-          document.getElementById("sfxVolumeMain").value = value;
-          document.getElementById("sfxVolumeGame").value = value;
+          setIfExists("sfxValMain", "textContent", value);
+          setIfExists("sfxValGame", "textContent", value);
+          setIfExists("sfxVolumeMain", "value", value);
+          setIfExists("sfxVolumeGame", "value", value);
         } else if (type === "music") {
           settings.musicVolume = parseInt(value);
-          document.getElementById("musicValMain").textContent = value;
-          document.getElementById("musicValGame").textContent = value;
-          document.getElementById("musicVolumeMain").value = value;
-          document.getElementById("musicVolumeGame").value = value;
+          setIfExists("musicValMain", "textContent", value);
+          setIfExists("musicValGame", "textContent", value);
+          setIfExists("musicVolumeMain", "value", value);
+          setIfExists("musicVolumeGame", "value", value);
         }
+      }
+
+      function exitGame() {
+        window.close();
       }
 
       function closeGameSettings() {
@@ -867,7 +927,8 @@
           active: true,
           step: 0,
           phase: "intro",
-          aimed: false,
+          aimedUp: false,
+          aimedDown: false,
           shot: false,
           hitBall: false,
           reloaded: false,
@@ -892,15 +953,22 @@
       }
 
       function completeTutorialStep() {
-        // Show success, then move to "done" phase
-        tutorial.phase = "done";
+        // Show success message (auto-advances after SUCCESS_HOLD_FRAMES)
+        tutorial.phase = "success";
         tutorial.msgTimer = 0;
+        tutorial.flashTimer = 0;
       }
 
       function advanceTutorial() {
         tutorial.step++;
         tutorial.msgTimer = 0;
         tutorial.flashTimer = 0;
+        // Reset action flags so the next play phase starts fresh
+        tutorial.aimedUp = false;
+        tutorial.aimedDown = false;
+        tutorial.shot = false;
+        tutorial.hitBall = false;
+        tutorial.reloaded = false;
         if (tutorial.step >= tutorialSteps.length) {
           // All steps done, show exit screen
           tutorial.phase = "exit";
@@ -910,6 +978,32 @@
           return;
         }
         tutorial.phase = "intro";
+      }
+
+      // Called when leaving an intro modal to begin the action phase.
+      // Sets up per-step preconditions so the requested action is meaningful.
+      function startStepPlay() {
+        const step = tutorialSteps[tutorial.step];
+        const cfg = diffConfig[settings.difficulty];
+        if (step.waitFor === "reload") {
+          // Drain ammo so pressing R has an effect
+          if (game.ammo === game.maxAmmo) {
+            game.ammo = Math.max(0, game.maxAmmo - 2);
+          }
+          // No ball needed for reload step
+          balls = [];
+          bullets = [];
+        } else if (step.waitFor === "hit") {
+          // Make sure there's a ball to hit
+          if (balls.length === 0) spawnTutorialBall();
+        } else if (step.waitFor === "shoot") {
+          // Top up a couple shots so they can fire
+          if (game.ammo === 0 && !game.reloading) {
+            game.ammo = Math.min(game.maxAmmo, 3);
+          }
+        }
+        tutorial.phase = "play";
+        tutorial.msgTimer = 0;
       }
 
       function finishTutorial() {
@@ -933,25 +1027,29 @@
         if (!tutorial.active) return;
         tutorial.flashTimer++;
 
-        if (tutorial.phase === "intro") {
-          // Waiting for any key press
+        if (tutorial.phase === "intro" || tutorial.phase === "exit") {
+          // Waiting for key press
           return;
         }
 
-        if (tutorial.phase === "done") {
-          // Waiting for any key press
-          return;
-        }
-
-        if (tutorial.phase === "exit") {
-          // Waiting for SPACE to start real game
+        if (tutorial.phase === "success") {
+          tutorial.msgTimer++;
+          if (tutorial.msgTimer >= SUCCESS_HOLD_FRAMES) {
+            advanceTutorial();
+          }
           return;
         }
 
         if (tutorial.phase !== "play") return;
 
+        // Give the player a brief beat in "play" before checks become live,
+        // so an early-completed action doesn't feel jarring (e.g. they aimed
+        // immediately after the intro). Acts as anti-bounce on transitions.
+        tutorial.msgTimer++;
+        if (tutorial.msgTimer < 8) return;
+
         const step = tutorialSteps[tutorial.step];
-        if (step.waitFor === "aim" && tutorial.aimed) {
+        if (step.waitFor === "aim" && tutorial.aimedUp && tutorial.aimedDown) {
           completeTutorialStep();
         } else if (step.waitFor === "shoot" && tutorial.shot) {
           completeTutorialStep();
@@ -1013,17 +1111,74 @@
         const step = tutorialSteps[tutorial.step];
 
         if (tutorial.phase === "intro") {
+          // Special: HUD callouts step uses a different layout (HUD stays
+          // visible at top, labels with arrows point at each meter)
+          if (step.hudCallouts) {
+            // Dim background but keep HUD readable
+            ctx.fillStyle = "rgba(10, 10, 26, 0.78)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Re-draw HUD on top of dim
+            drawHUD();
+
+            // Title
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#c4a35a";
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillText((tutorial.step + 1) + " / " + tutorialSteps.length, cx, 360);
+            ctx.fillStyle = "#f0e68c";
+            ctx.font = '20px "Press Start 2P"';
+            ctx.fillText(step.title, cx, 395);
+            ctx.fillStyle = "#a0c4e8";
+            ctx.font = '11px "Press Start 2P"';
+            ctx.fillText(step.msg.split("\n")[0], cx, 425);
+            if (step.msg.split("\n")[1]) {
+              ctx.fillText(step.msg.split("\n")[1], cx, 448);
+            }
+
+            // Callouts: target is a point on the HUD, label is a box below
+            // Lives panel center: ~85, 30 ; Ammo: ~110, 70 ; Round: 560, 30 ; Score: 890, 30
+            drawCallout(85, 50, 200, 145, "LEVENS", "0 = GAME OVER");
+            drawCallout(110, 90, 200, 230, "KOGELS", "R om te herladen");
+            drawCallout(560, 50, 560, 200, "RONDE", "Hoger = meer ballen");
+            drawCallout(890, 50, 890, 200, "SCORE", "Verzamel punten");
+
+            // Press to continue
+            if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
+              ctx.fillStyle = "#f0e68c";
+              ctx.font = '10px "Press Start 2P"';
+              ctx.textAlign = "center";
+              ctx.fillText("Druk op een toets om verder te gaan", cx, 545);
+            }
+
+            ctx.textAlign = "left";
+            ctx.restore();
+            return;
+          }
+
           // Dark overlay with step introduction
           ctx.fillStyle = "rgba(10, 10, 26, 0.75)";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          const boxW = 550;
-          const boxH = 180;
+          const isWarning = !!step.warning;
+          const isGoal = !!step.goal;
+          const accentColor = isWarning
+            ? "#e94560"
+            : isGoal
+              ? "#4ecdc4"
+              : "#c4a35a";
+          const titleColor = isWarning
+            ? "#e94560"
+            : isGoal
+              ? "#4ecdc4"
+              : "#f0e68c";
+          const lines = step.msg.split("\n");
+          const boxW = 580;
+          const boxH = 160 + lines.length * 24;
           const boxX = (canvas.width - boxW) / 2;
           const boxY = (canvas.height - boxH) / 2 - 20;
 
           ctx.fillStyle = "rgba(15, 52, 96, 0.95)";
-          ctx.strokeStyle = "#c4a35a";
+          ctx.strokeStyle = accentColor;
           ctx.lineWidth = 3;
           roundRect(ctx, boxX, boxY, boxW, boxH, 12);
           ctx.fill();
@@ -1036,14 +1191,13 @@
           ctx.fillText((tutorial.step + 1) + " / " + tutorialSteps.length, cx, boxY + 30);
 
           // Title
-          ctx.fillStyle = "#f0e68c";
+          ctx.fillStyle = titleColor;
           ctx.font = '20px "Press Start 2P"';
           ctx.fillText(step.title, cx, boxY + 70);
 
           // Description (multiline)
           ctx.fillStyle = "#a0c4e8";
           ctx.font = '12px "Press Start 2P"';
-          const lines = step.msg.split("\n");
           for (let i = 0; i < lines.length; i++) {
             ctx.fillText(lines[i], cx, boxY + 110 + i * 24);
           }
@@ -1052,7 +1206,11 @@
           if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
             ctx.fillStyle = "#f0e68c";
             ctx.font = '10px "Press Start 2P"';
-            ctx.fillText("Druk op een toets om verder te gaan", cx, boxY + 170);
+            const promptText =
+              step.waitFor === "info"
+                ? "Druk op een toets om verder te gaan"
+                : "Druk op een toets om te beginnen";
+            ctx.fillText(promptText, cx, boxY + boxH - 20);
           }
 
           ctx.textAlign = "left";
@@ -1080,6 +1238,17 @@
           ctx.textAlign = "center";
           ctx.fillText(step.title, cx, boxY + 18);
 
+          // Dynamic hint for the aim step: guide the player based on what
+          // direction they still need to try.
+          let hintText = step.hint;
+          if (step.waitFor === "aim") {
+            if (tutorial.aimedUp && !tutorial.aimedDown) {
+              hintText = "Goed! Druk nu \u2193 (omlaag)";
+            } else if (tutorial.aimedDown && !tutorial.aimedUp) {
+              hintText = "Goed! Druk nu \u2191 (omhoog)";
+            }
+          }
+
           // Blinking hint text
           if (Math.floor(tutorial.flashTimer / 20) % 2 === 0) {
             ctx.fillStyle = "#f0e68c";
@@ -1087,21 +1256,35 @@
             ctx.fillStyle = "#ffffff";
           }
           ctx.font = '12px "Press Start 2P"';
-          ctx.fillText(step.hint, cx, boxY + 40);
+          ctx.fillText(hintText, cx, boxY + 40);
 
           ctx.textAlign = "left";
           ctx.restore();
           return;
         }
 
-        if (tutorial.phase === "done") {
-          // Success message
-          const boxW = 400;
-          const boxH = 90;
+        if (tutorial.phase === "success") {
+          // Success message with auto-advance progress bar
+          const boxW = 440;
+          const boxH = 100;
           const boxX = (canvas.width - boxW) / 2;
-          const boxY = 70;
+          const boxY = 60;
 
-          ctx.fillStyle = "rgba(30, 120, 80, 0.9)";
+          // Fade out near the end so it doesn't snap away
+          const fadeStart = SUCCESS_HOLD_FRAMES - 25;
+          let alpha = 1;
+          if (tutorial.msgTimer > fadeStart) {
+            alpha = Math.max(0, 1 - (tutorial.msgTimer - fadeStart) / 25);
+          }
+          // Subtle pop-in scale on the first few frames
+          const popIn = Math.min(1, tutorial.msgTimer / 8);
+          const scale = 0.9 + 0.1 * popIn;
+          ctx.globalAlpha = alpha;
+          ctx.translate(cx, boxY + boxH / 2);
+          ctx.scale(scale, scale);
+          ctx.translate(-cx, -(boxY + boxH / 2));
+
+          ctx.fillStyle = "rgba(30, 120, 80, 0.92)";
           ctx.strokeStyle = "#4ecdc4";
           ctx.lineWidth = 2;
           roundRect(ctx, boxX, boxY, boxW, boxH, 8);
@@ -1111,14 +1294,21 @@
           ctx.fillStyle = "#4ecdc4";
           ctx.font = '18px "Press Start 2P"';
           ctx.textAlign = "center";
-          ctx.fillText(step.successMsg, cx, boxY + 35);
+          ctx.fillText("\u2713 " + step.successMsg, cx, boxY + 42);
 
-          // Blinking hint
-          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
-            ctx.fillStyle = "#ffffffaa";
-            ctx.font = '10px "Press Start 2P"';
-            ctx.fillText("Druk op een toets", cx, boxY + 70);
-          }
+          // Auto-advance progress bar (visual breathing room)
+          const barInset = 24;
+          const barW = boxW - barInset * 2;
+          const barH = 6;
+          const barX = boxX + barInset;
+          const barY = boxY + boxH - 22;
+          const progress = Math.min(1, tutorial.msgTimer / SUCCESS_HOLD_FRAMES);
+          ctx.fillStyle = "#1a3d2a";
+          roundRect(ctx, barX, barY, barW, barH, 3);
+          ctx.fill();
+          ctx.fillStyle = "#4ecdc4";
+          roundRect(ctx, barX, barY, barW * progress, barH, 3);
+          ctx.fill();
 
           ctx.textAlign = "left";
           ctx.restore();
@@ -1258,8 +1448,8 @@
         updateTutorial();
 
         // Aim angle (arrow keys up/down)
-        if (cowboy.aimUp) { cowboy.aimAngle -= cowboy.aimSpeed; tutorial.aimed = true; }
-        if (cowboy.aimDown) { cowboy.aimAngle += cowboy.aimSpeed; tutorial.aimed = true; }
+        if (cowboy.aimUp) { cowboy.aimAngle -= cowboy.aimSpeed; tutorial.aimedUp = true; }
+        if (cowboy.aimDown) { cowboy.aimAngle += cowboy.aimSpeed; tutorial.aimedDown = true; }
         // Clamp aim angle: -80deg to +80deg (roughly forward-facing)
         cowboy.aimAngle = Math.max(
           -Math.PI * 0.44,
@@ -1823,6 +2013,59 @@
         ctx.restore();
       }
 
+      // Tutorial HUD callout: arrow from a label box up to a HUD target point.
+      // (targetX,targetY) sits just below the HUD element being explained.
+      function drawCallout(targetX, targetY, labelX, labelY, title, desc) {
+        const labelW = 220;
+        const labelH = 56;
+        const labelBoxX = labelX - labelW / 2;
+        const labelBoxY = labelY - 18;
+
+        // Arrow line from top of label box up to the target
+        ctx.strokeStyle = "#f0e68c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(labelX, labelBoxY);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+
+        // Arrowhead at the target
+        const angle = Math.atan2(targetY - labelBoxY, targetX - labelX);
+        const headLen = 12;
+        ctx.fillStyle = "#f0e68c";
+        ctx.beginPath();
+        ctx.moveTo(targetX, targetY);
+        ctx.lineTo(
+          targetX - headLen * Math.cos(angle - 0.5),
+          targetY - headLen * Math.sin(angle - 0.5),
+        );
+        ctx.lineTo(
+          targetX - headLen * Math.cos(angle + 0.5),
+          targetY - headLen * Math.sin(angle + 0.5),
+        );
+        ctx.closePath();
+        ctx.fill();
+
+        // Label box
+        ctx.fillStyle = "rgba(15, 52, 96, 0.95)";
+        ctx.strokeStyle = "#f0e68c";
+        ctx.lineWidth = 2;
+        roundRect(ctx, labelBoxX, labelBoxY, labelW, labelH, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title
+        ctx.fillStyle = "#f0e68c";
+        ctx.font = '12px "Press Start 2P"';
+        ctx.textAlign = "center";
+        ctx.fillText(title, labelX, labelBoxY + 22);
+
+        // Description
+        ctx.fillStyle = "#a0c4e8";
+        ctx.font = '8px "Press Start 2P"';
+        ctx.fillText(desc, labelX, labelBoxY + 42);
+      }
+
       function roundRect(ctx, x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -1981,13 +2224,20 @@
           return;
         }
 
-        // Tutorial intro/done: any key press advances
+        // Tutorial intro: any key press advances. Info-only steps skip
+        // straight to the next step; action steps drop into play phase.
         if (tutorial.active && tutorial.phase === "intro") {
-          tutorial.phase = "play";
+          const step = tutorialSteps[tutorial.step];
+          if (step.waitFor === "info") {
+            advanceTutorial();
+          } else {
+            startStepPlay();
+          }
           e.preventDefault();
           return;
         }
-        if (tutorial.active && tutorial.phase === "done") {
+        // Success phase auto-advances; allow any key to skip the wait
+        if (tutorial.active && tutorial.phase === "success") {
           advanceTutorial();
           e.preventDefault();
           return;
