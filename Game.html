@@ -101,6 +101,26 @@
       .menu-btn:active {
         transform: scale(0.97);
       }
+      /* Compact action button used inside a setting-row (e.g. REPLAY
+         tutorial) — visually consistent with other row controls. */
+      .row-btn {
+        background: #16213e;
+        border: 1px solid #c4a35a;
+        color: #f0e68c;
+        font-family: "Press Start 2P", monospace;
+        font-size: 11px;
+        padding: 8px 18px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .row-btn:hover {
+        background: #c4a35a;
+        color: #1a1a2e;
+      }
+      .row-btn:active {
+        transform: scale(0.97);
+      }
 
       /* Difficulty Screen */
       #difficultyScreen {
@@ -371,7 +391,6 @@
       <!-- Screen 1: Main Menu -->
       <div id="mainMenu" class="screen active">
         <h1>DEAD ANGLE</h1>
-        <p class="subtitle">A COWBOY RICOCHET SHOOTER</p>
         <button class="menu-btn" onclick="showScreen('difficultyScreen')">
           PLAY
         </button>
@@ -440,6 +459,10 @@
             <span class="slider-value" id="sfxValMain">70</span>
           </div>
         </div>
+        <div class="setting-row">
+          <label>TUTORIAL</label>
+          <button class="row-btn" onclick="openTutorial()">PLAY</button>
+        </div>
         <div class="controls-list">
           <h3>CONTROLS</h3>
           <div class="control-row"><span class="key">&uarr; / &darr;</span><span>AIM UP / DOWN</span></div>
@@ -504,6 +527,7 @@
       <div id="pauseScreen" class="screen">
         <h2>PAUSED</h2>
         <button class="menu-btn" onclick="resumeGame()">RESUME</button>
+        <button class="menu-btn" onclick="showScreen('confirmRestart')">RESTART</button>
         <button class="menu-btn" onclick="showScreen('settingsGame')">
           SETTINGS
         </button>
@@ -519,6 +543,20 @@
         <div class="prompt-buttons">
           <button class="menu-btn warn-btn" onclick="leaveGame()">
             YES, LEAVE
+          </button>
+          <button class="menu-btn safe-btn" onclick="showScreen('pauseScreen')">
+            CANCEL
+          </button>
+        </div>
+      </div>
+
+      <!-- Screen 12: Confirm Restart -->
+      <div id="confirmRestart" class="screen">
+        <h2>RESTART GAME?</h2>
+        <p>Your progress will be lost!</p>
+        <div class="prompt-buttons">
+          <button class="menu-btn warn-btn" onclick="restartGame()">
+            YES, RESTART
           </button>
           <button class="menu-btn safe-btn" onclick="showScreen('pauseScreen')">
             CANCEL
@@ -603,10 +641,37 @@
         reloaded: false,
         msgTimer: 0,
         flashTimer: 0,
+        calloutIndex: 0,
       };
 
       // Frames the success message stays before auto-advancing (~60fps)
       const SUCCESS_HOLD_FRAMES = 110;
+
+      // HUD callouts shown one at a time during the HUD tutorial step.
+      // rect() returns the bounding box of the HUD element so the spotlight
+      // ring matches elements that resize with difficulty (lives/ammo).
+      const HUD_CALLOUTS = [
+        {
+          title: "LEVENS",
+          desc: "Bij 0 levens is het\nGAME OVER",
+          rect: () => ({ x: 13, y: 8, w: 34 + game.maxLives * 28, h: 44 }),
+        },
+        {
+          title: "KOGELS",
+          desc: "Aantal kogels over\nin je revolver",
+          rect: () => ({ x: 13, y: 53, w: 34 + game.maxAmmo * 22, h: 36 }),
+        },
+        {
+          title: "RONDE",
+          desc: "Hoe hoger de ronde,\nhoe meer ballen",
+          rect: () => ({ x: 458, y: 8, w: 204, h: 44 }),
+        },
+        {
+          title: "SCORE",
+          desc: "Verdien punten door\nballen te raken",
+          rect: () => ({ x: 778, y: 8, w: 224, h: 44 }),
+        },
+      ];
 
       const tutorialSteps = [
         {
@@ -798,7 +863,27 @@
       function setDifficulty(diff) {
         settings.difficulty = diff;
         updateDiffDisplays();
-        showScreen("tutorialPrompt");
+        // First-time players: tutorial is mandatory (no prompt). After
+        // that, PLAY goes straight into the game. The tutorial can still
+        // be re-run from the Settings screen.
+        let seenTutorial = false;
+        try {
+          seenTutorial = sessionStorage.getItem("da_tutorialDone_v2") === "1";
+        } catch (e) {
+          seenTutorial = true;
+        }
+        if (seenTutorial) {
+          startGame();
+        } else {
+          try { sessionStorage.setItem("da_tutorialDone_v2", "1"); } catch (e) {}
+          startTutorial();
+        }
+      }
+
+      // Launch tutorial from the Settings screen on demand.
+      function openTutorial() {
+        try { sessionStorage.setItem("da_tutorialDone_v2", "1"); } catch (e) {}
+        startTutorial("settingsMain");
       }
 
       function updateDiffDisplays() {
@@ -922,7 +1007,7 @@
         }
       }
 
-      function startTutorial() {
+      function startTutorial(returnTo) {
         tutorial = {
           active: true,
           step: 0,
@@ -934,6 +1019,8 @@
           reloaded: false,
           msgTimer: 0,
           flashTimer: 0,
+          calloutIndex: 0,
+          returnTo: returnTo || null,
         };
         startGame();
       }
@@ -963,6 +1050,7 @@
         tutorial.step++;
         tutorial.msgTimer = 0;
         tutorial.flashTimer = 0;
+        tutorial.calloutIndex = 0;
         // Reset action flags so the next play phase starts fresh
         tutorial.aimedUp = false;
         tutorial.aimedDown = false;
@@ -1007,9 +1095,22 @@
       }
 
       function finishTutorial() {
-        // Tutorial done, start real game
+        const returnTo = tutorial.returnTo;
         tutorial.active = false;
         tutorial.phase = "";
+        balls = [];
+        bullets = [];
+        particles = [];
+
+        // Replayed from Settings: just go back, don't start a new round.
+        if (returnTo) {
+          game.running = false;
+          game.paused = false;
+          showScreen(returnTo);
+          return;
+        }
+
+        // First-time onboarding: tutorial done, roll straight into the game.
         game.score = 0;
         game.round = 0;
         game.lives = diffConfig[settings.difficulty].lives;
@@ -1017,9 +1118,6 @@
         game.maxAmmo = diffConfig[settings.difficulty].ammo;
         game.reloading = false;
         game.reloadTimer = 0;
-        balls = [];
-        bullets = [];
-        particles = [];
         nextRound();
       }
 
@@ -1086,21 +1184,40 @@
           ctx.stroke();
 
           ctx.textAlign = "center";
+
+          // Copy adapts to how the tutorial was launched: onboarding rolls
+          // into the real game, replay from Settings returns there.
+          const isReplay = !!tutorial.returnTo;
+
+          // Eyebrow
+          ctx.fillStyle = "#7a8ba8";
+          ctx.font = '8px "Press Start 2P"';
+          ctx.fillText("TUTORIAL AFGEROND", cx, boxY + 30);
+
           ctx.fillStyle = "#4ecdc4";
           ctx.font = '24px "Press Start 2P"';
-          ctx.fillText("TUTORIAL KLAAR!", cx, boxY + 60);
+          ctx.fillText("KLAAR, COWBOY!", cx, boxY + 75);
 
           ctx.fillStyle = "#a0c4e8";
-          ctx.font = '12px "Press Start 2P"';
-          ctx.fillText("Je kent nu alle besturing.", cx, boxY + 110);
-          ctx.fillText("Veel succes, cowboy!", cx, boxY + 140);
+          ctx.font = '11px "Press Start 2P"';
+          ctx.fillText("Je kent nu alle besturing.", cx, boxY + 120);
+          ctx.fillText(
+            isReplay ? "Terug naar instellingen." : "Tijd voor het echte werk.",
+            cx,
+            boxY + 145,
+          );
 
-          // Blinking prompt
-          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
-            ctx.fillStyle = "#f0e68c";
-            ctx.font = '14px "Press Start 2P"';
-            ctx.fillText("Druk op SPATIE om te beginnen", cx, boxY + 190);
-          }
+          // Blinking CTA matching the shared "[ TOETS ]" pattern
+          const exitBlink = Math.floor(tutorial.flashTimer / 30) % 2 === 0;
+          ctx.fillStyle = exitBlink ? "#f0e68c" : "#8a7a4a";
+          ctx.font = '11px "Press Start 2P"';
+          ctx.fillText(
+            isReplay
+              ? "[ TOETS ]  TERUG  \u25B6"
+              : "[ TOETS ]  START SPEL  \u25B6",
+            cx,
+            boxY + 190,
+          );
 
           ctx.textAlign = "left";
           ctx.restore();
@@ -1114,41 +1231,92 @@
           // Special: HUD callouts step uses a different layout (HUD stays
           // visible at top, labels with arrows point at each meter)
           if (step.hudCallouts) {
-            // Dim background but keep HUD readable
-            ctx.fillStyle = "rgba(10, 10, 26, 0.78)";
+            const co = HUD_CALLOUTS[tutorial.calloutIndex];
+            const rect = co.rect();
+
+            // 1. Uniform dim, then redraw HUD clean on top
+            ctx.fillStyle = "rgba(10, 10, 26, 0.82)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Re-draw HUD on top of dim
             drawHUD();
 
-            // Title
+            // 2. Spotlight: pulsing glow ring around the active HUD element
+            const pulse = 0.5 + 0.5 * Math.sin(tutorial.flashTimer * 0.08);
+            const pad = 6 + pulse * 3;
+            ctx.shadowColor = "#f0e68c";
+            ctx.shadowBlur = 18 + pulse * 10;
+            ctx.strokeStyle = "#f0e68c";
+            ctx.lineWidth = 3;
+            roundRect(
+              ctx,
+              rect.x - pad,
+              rect.y - pad,
+              rect.w + pad * 2,
+              rect.h + pad * 2,
+              10,
+            );
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // 3. Focused info card (below the HUD, centered)
+            const cardW = 440;
+            const cardH = 240;
+            const cardX = (canvas.width - cardW) / 2;
+            const cardY = 330;
+
+            ctx.fillStyle = "rgba(15, 52, 96, 0.96)";
+            ctx.strokeStyle = "#c4a35a";
+            ctx.lineWidth = 2;
+            roundRect(ctx, cardX, cardY, cardW, cardH, 12);
+            ctx.fill();
+            ctx.stroke();
+
             ctx.textAlign = "center";
-            ctx.fillStyle = "#c4a35a";
-            ctx.font = '10px "Press Start 2P"';
-            ctx.fillText((tutorial.step + 1) + " / " + tutorialSteps.length, cx, 360);
+
+            // Eyebrow label (context: which step, small + muted)
+            ctx.fillStyle = "#7a8ba8";
+            ctx.font = '8px "Press Start 2P"';
+            ctx.fillText(
+              "STAP " + (tutorial.step + 1) + " / " + tutorialSteps.length + "  \u2014  JE HUD",
+              cx,
+              cardY + 28,
+            );
+
+            // Hero: the meter name
             ctx.fillStyle = "#f0e68c";
-            ctx.font = '20px "Press Start 2P"';
-            ctx.fillText(step.title, cx, 395);
+            ctx.font = '24px "Press Start 2P"';
+            ctx.fillText(co.title, cx, cardY + 75);
+
+            // Description (max 2 lines, tight leading)
             ctx.fillStyle = "#a0c4e8";
             ctx.font = '11px "Press Start 2P"';
-            ctx.fillText(step.msg.split("\n")[0], cx, 425);
-            if (step.msg.split("\n")[1]) {
-              ctx.fillText(step.msg.split("\n")[1], cx, 448);
+            const descLines = co.desc.split("\n");
+            for (let i = 0; i < descLines.length; i++) {
+              ctx.fillText(descLines[i], cx, cardY + 115 + i * 22);
             }
 
-            // Callouts: target is a point on the HUD, label is a box below
-            // Lives panel center: ~85, 30 ; Ammo: ~110, 70 ; Round: 560, 30 ; Score: 890, 30
-            drawCallout(85, 50, 200, 145, "LEVENS", "0 = GAME OVER");
-            drawCallout(110, 90, 200, 230, "KOGELS", "R om te herladen");
-            drawCallout(560, 50, 560, 200, "RONDE", "Hoger = meer ballen");
-            drawCallout(890, 50, 890, 200, "SCORE", "Verzamel punten");
+            // Callout progress dots (which of 4 meters)
+            drawProgressDots(
+              cx,
+              cardY + 180,
+              tutorial.calloutIndex,
+              HUD_CALLOUTS.length,
+              "#f0e68c",
+              "#c4a35a",
+              "#4a5a7a",
+            );
 
-            // Press to continue
-            if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
-              ctx.fillStyle = "#f0e68c";
-              ctx.font = '10px "Press Start 2P"';
-              ctx.textAlign = "center";
-              ctx.fillText("Druk op een toets om verder te gaan", cx, 545);
-            }
+            // CTA: blinks to draw the eye; changes copy on the last dot
+            const isLast = tutorial.calloutIndex === HUD_CALLOUTS.length - 1;
+            const blink = Math.floor(tutorial.flashTimer / 30) % 2 === 0;
+            ctx.fillStyle = blink ? "#f0e68c" : "#8a7a4a";
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillText(
+              isLast
+                ? "[ TOETS ]  VOLGENDE STAP  \u25B6"
+                : "[ TOETS ]  VOLGENDE METER  \u25B6",
+              cx,
+              cardY + 220,
+            );
 
             ctx.textAlign = "left";
             ctx.restore();
@@ -1184,11 +1352,15 @@
           ctx.fill();
           ctx.stroke();
 
-          // Step counter
+          // Eyebrow: step indicator (muted, small)
           ctx.textAlign = "center";
-          ctx.fillStyle = "#c4a35a";
-          ctx.font = '10px "Press Start 2P"';
-          ctx.fillText((tutorial.step + 1) + " / " + tutorialSteps.length, cx, boxY + 30);
+          ctx.fillStyle = "#7a8ba8";
+          ctx.font = '8px "Press Start 2P"';
+          ctx.fillText(
+            "STAP " + (tutorial.step + 1) + " / " + tutorialSteps.length,
+            cx,
+            boxY + 28,
+          );
 
           // Title
           ctx.fillStyle = titleColor;
@@ -1202,16 +1374,26 @@
             ctx.fillText(lines[i], cx, boxY + 110 + i * 24);
           }
 
+          // Progress dots just above the CTA for a consistent footer pattern
+          drawProgressDots(
+            cx,
+            boxY + boxH - 46,
+            tutorial.step,
+            tutorialSteps.length,
+            accentColor,
+            accentColor,
+            "#4a5a7a",
+          );
+
           // Blinking "press any key" hint
-          if (Math.floor(tutorial.flashTimer / 30) % 2 === 0) {
-            ctx.fillStyle = "#f0e68c";
-            ctx.font = '10px "Press Start 2P"';
-            const promptText =
-              step.waitFor === "info"
-                ? "Druk op een toets om verder te gaan"
-                : "Druk op een toets om te beginnen";
-            ctx.fillText(promptText, cx, boxY + boxH - 20);
-          }
+          const introBlink = Math.floor(tutorial.flashTimer / 30) % 2 === 0;
+          ctx.fillStyle = introBlink ? "#f0e68c" : "#8a7a4a";
+          ctx.font = '10px "Press Start 2P"';
+          const promptText =
+            step.waitFor === "info"
+              ? "[ TOETS ]  VERDER  \u25B6"
+              : "[ TOETS ]  START  \u25B6";
+          ctx.fillText(promptText, cx, boxY + boxH - 18);
 
           ctx.textAlign = "left";
           ctx.restore();
@@ -1937,65 +2119,12 @@
 
         ctx.textAlign = "left";
 
-        // Bottom bar
+        // Ground bar (floor the cowboy stands on)
         const barY = canvas.height - 80;
         ctx.fillStyle = "#1a8a5a";
         ctx.fillRect(0, barY, canvas.width, 80);
         ctx.fillStyle = "#15704a";
         ctx.fillRect(0, barY, canvas.width, 4);
-
-        // Control hints
-        ctx.font = '10px "Press Start 2P"';
-        ctx.textAlign = "center";
-
-        // W/S Move
-        ctx.fillStyle = "#0f3460";
-        ctx.strokeStyle = "#1a6b6a";
-        roundRect(ctx, 140, barY + 12, 120, 22, 4);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#f0e68c";
-        ctx.fillText("W/S MOVE", 200, barY + 28);
-
-        // Arrow keys Aim
-        ctx.fillStyle = "#0f3460";
-        roundRect(ctx, 280, barY + 12, 140, 22, 4);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#f0e68c";
-        ctx.fillText("\u2191/\u2193 AIM", 350, barY + 28);
-
-        // SPACE Shoot
-        ctx.fillStyle = "#0f3460";
-        roundRect(ctx, 440, barY + 12, 160, 22, 4);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#f0e68c";
-        ctx.fillText("SPACE SHOOT", 520, barY + 28);
-
-        // R Reload
-        ctx.fillStyle = "#0f3460";
-        roundRect(ctx, 620, barY + 12, 130, 22, 4);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#f0e68c";
-        ctx.fillText("R RELOAD", 685, barY + 28);
-
-        // Aim angle indicator
-        ctx.fillStyle = "#0f3460";
-        roundRect(ctx, 140, barY + 42, 610, 24, 4);
-        ctx.fill();
-        // Aim bar: map angle from -0.44pi..+0.44pi to 0..1
-        const aimNorm = (cowboy.aimAngle + Math.PI * 0.44) / (Math.PI * 0.88);
-        const aimBarW = 600;
-        ctx.fillStyle = "#c4a35a";
-        // Draw center marker
-        ctx.fillStyle = "#1a6b6a55";
-        ctx.fillRect(140 + 5 + aimBarW * 0.5 - 1, barY + 45, 2, 18);
-        // Draw aim position
-        ctx.fillStyle = "#c4a35a";
-        const aimX = 140 + 5 + aimBarW * aimNorm;
-        ctx.fillRect(aimX - 4, barY + 45, 8, 18);
 
         ctx.textAlign = "left";
       }
@@ -2011,6 +2140,35 @@
         ctx.bezierCurveTo(x + 8, y - 4, x, y, x, y + 4);
         ctx.fill();
         ctx.restore();
+      }
+
+      // Progress dots (filled = done, ring = upcoming, glow = current).
+      function drawProgressDots(cx, y, current, total, activeColor, doneColor, emptyColor) {
+        const spacing = 18;
+        const radius = 5;
+        const totalW = (total - 1) * spacing;
+        for (let i = 0; i < total; i++) {
+          const dx = cx - totalW / 2 + i * spacing;
+          ctx.beginPath();
+          if (i === current) {
+            // Current: filled + subtle glow
+            ctx.shadowColor = activeColor;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = activeColor;
+            ctx.arc(dx, y, radius + 1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          } else if (i < current) {
+            ctx.fillStyle = doneColor;
+            ctx.arc(dx, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.strokeStyle = emptyColor;
+            ctx.lineWidth = 1.5;
+            ctx.arc(dx, y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
       }
 
       // Tutorial HUD callout: arrow from a label box up to a HUD target point.
@@ -2215,12 +2373,10 @@
 
         if (!game.running || game.paused) return;
 
-        // Tutorial exit: SPACE starts real game
+        // Tutorial exit: any key finishes (matches the rest of the tutorial)
         if (tutorial.active && tutorial.phase === "exit") {
-          if (e.key === " ") {
-            finishTutorial();
-            e.preventDefault();
-          }
+          finishTutorial();
+          e.preventDefault();
           return;
         }
 
@@ -2228,7 +2384,10 @@
         // straight to the next step; action steps drop into play phase.
         if (tutorial.active && tutorial.phase === "intro") {
           const step = tutorialSteps[tutorial.step];
-          if (step.waitFor === "info") {
+          if (step.hudCallouts && tutorial.calloutIndex < HUD_CALLOUTS.length - 1) {
+            tutorial.calloutIndex++;
+            tutorial.flashTimer = 0;
+          } else if (step.waitFor === "info") {
             advanceTutorial();
           } else {
             startStepPlay();
@@ -2236,9 +2395,9 @@
           e.preventDefault();
           return;
         }
-        // Success phase auto-advances; allow any key to skip the wait
+        // Success phase auto-advances on its own timer; swallow all keys
+        // so the player can't rush past the feedback message.
         if (tutorial.active && tutorial.phase === "success") {
-          advanceTutorial();
           e.preventDefault();
           return;
         }
