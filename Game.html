@@ -592,20 +592,26 @@
           maxBalls: 3,
           ballsPerRound: 1,
           ammo: 10,
+          spawnInterval: 60,
+          telegraphFrames: 55,
         },
         medium: {
           lives: 5,
-          ballSpeed: 2.5,
+          ballSpeed: 2.3,
           maxBalls: 5,
           ballsPerRound: 2,
           ammo: 8,
+          spawnInterval: 45,
+          telegraphFrames: 45,
         },
         hard: {
           lives: 3,
-          ballSpeed: 3.5,
+          ballSpeed: 3.1,
           maxBalls: 7,
           ballsPerRound: 3,
           ammo: 6,
+          spawnInterval: 30,
+          telegraphFrames: 35,
         },
       };
 
@@ -746,6 +752,7 @@
       let bullets = [];
       let balls = [];
       let particles = [];
+      let ballSpawnQueue = [];
       let screenShake = 0;
 
       // ==================== AUDIO (Web Audio API) ====================
@@ -983,6 +990,7 @@
         bullets = [];
         balls = [];
         particles = [];
+        ballSpawnQueue = [];
         screenShake = 0;
 
         canvas.style.display = "block";
@@ -1101,6 +1109,7 @@
         balls = [];
         bullets = [];
         particles = [];
+        ballSpawnQueue = [];
 
         // Replayed from Settings: just go back, don't start a new round.
         if (returnTo) {
@@ -1507,32 +1516,73 @@
           cfg.ballsPerRound + Math.floor((game.round - 1) / 2),
           cfg.maxBalls,
         );
+        // Stagger spawns: each new ball is announced by a telegraph on the
+        // right edge, then enters from offscreen. Prevents the "all at once"
+        // pop-in and gives the player time to react.
+        const interval = cfg.spawnInterval;
+        const tele = cfg.telegraphFrames;
         for (let i = 0; i < count; i++) {
-          const sizes = [2, 3];
-          const size = sizes[Math.floor(Math.random() * sizes.length)];
-          spawnBall(size);
+          const size = Math.random() < 0.45 ? 2 : 3;
+          ballSpawnQueue.push({
+            size,
+            delay: tele + i * interval,
+            maxDelay: tele + i * interval,
+            y: pickSpawnY(size),
+          });
         }
         playSound("roundclear");
+      }
+
+      function pickSpawnY(size) {
+        const radius = size * 15;
+        const minY = radius + 20;
+        const maxY = canvas.height - 100 - radius;
+        // Try to avoid overlapping existing balls / queued spawns.
+        let bestY = minY + Math.random() * (maxY - minY);
+        let bestDist = -1;
+        for (let i = 0; i < 8; i++) {
+          const candidate = minY + Math.random() * (maxY - minY);
+          let minDist = Infinity;
+          for (const b of balls) {
+            if (b.x > canvas.width - 200) {
+              minDist = Math.min(minDist, Math.abs(b.y - candidate));
+            }
+          }
+          for (const q of ballSpawnQueue) {
+            minDist = Math.min(minDist, Math.abs(q.y - candidate));
+          }
+          if (minDist > bestDist) {
+            bestDist = minDist;
+            bestY = candidate;
+            if (minDist > 90) break;
+          }
+        }
+        return bestY;
       }
 
       function spawnBall(size, atX, atY) {
         const cfg = diffConfig[settings.difficulty];
         const radius = size * 15;
-        // Spawn from right side of screen
-        const x = atX !== undefined ? atX : 800 + Math.random() * 350;
-        const y = atY !== undefined ? atY : 80 + Math.random() * 440;
-        // Move mostly toward the left so they approach the cowboy
-        const angle = Math.PI + (Math.random() - 0.5) * 1.2;
-        const speed = cfg.ballSpeed * (0.8 + Math.random() * 0.4) * (3 / size);
+        // Spawn fully offscreen on the right so the ball slides into view
+        // rather than popping in.
+        const x = atX !== undefined ? atX : canvas.width + radius + 20;
+        const y = atY !== undefined ? atY : pickSpawnY(size);
+        // Horizontal-dominant velocity with capped forward speed so a ball
+        // never rockets straight at the cowboy. Small balls slightly faster.
+        const sizeMul = size === 2 ? 1.15 : 1.0;
+        const baseSpeed = cfg.ballSpeed * (0.85 + Math.random() * 0.3) * sizeMul;
+        const vx = -baseSpeed * (0.7 + Math.random() * 0.25);
+        const vy = baseSpeed * (Math.random() - 0.5) * 0.9;
         balls.push({
           x,
           y,
           radius,
           size,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
+          vx,
+          vy,
           color: size === 3 ? "#4ecdc4" : size === 2 ? "#e94560" : "#f0e68c",
           hit: false,
+          fadeIn: 20,
         });
       }
 
@@ -1719,6 +1769,7 @@
         for (let i = balls.length - 1; i >= 0; i--) {
           if (tutorialFrozen) continue;
           const ball = balls[i];
+          if (ball.fadeIn > 0) ball.fadeIn--;
           ball.x += ball.vx;
           ball.y += ball.vy;
           ball.vy += 0.03; // slight gravity
@@ -1770,8 +1821,23 @@
           }
         }
 
+        // Tick spawn queue
+        for (let i = ballSpawnQueue.length - 1; i >= 0; i--) {
+          const q = ballSpawnQueue[i];
+          q.delay--;
+          if (q.delay <= 0) {
+            spawnBall(q.size, undefined, q.y);
+            ballSpawnQueue.splice(i, 1);
+          }
+        }
+
         // Check round clear (not during tutorial)
-        if (balls.length === 0 && game.running && !tutorial.active) {
+        if (
+          balls.length === 0 &&
+          ballSpawnQueue.length === 0 &&
+          game.running &&
+          !tutorial.active
+        ) {
           nextRound();
         }
         // During tutorial, respawn ball if it goes off screen
@@ -1963,6 +2029,9 @@
 
       function drawBall(ball) {
         ctx.save();
+        if (ball.fadeIn && ball.fadeIn > 0) {
+          ctx.globalAlpha = 1 - ball.fadeIn / 20;
+        }
         // Glow
         const gradient = ctx.createRadialGradient(
           ball.x,
@@ -2003,7 +2072,97 @@
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.stroke();
+
+        // Grimmig monstergezicht, zijaanzicht, kijkt naar links (cowboy).
+        drawMonsterFace(ball);
+
         ctx.restore();
+      }
+
+      function drawMonsterFace(ball) {
+        const r = ball.radius;
+        const cx = ball.x;
+        const cy = ball.y;
+        // Face anchor shifted to the left side of the ball (facing cowboy).
+        const fx = cx - r * 0.35;
+
+        // Horn / spike on top
+        ctx.fillStyle = "#1a1a1a";
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.15, cy - r * 0.85);
+        ctx.lineTo(cx - r * 0.05, cy - r * 1.15);
+        ctx.lineTo(cx + r * 0.1, cy - r * 0.8);
+        ctx.closePath();
+        ctx.fill();
+
+        // Furrowed brow (angry diagonal slash above eye)
+        ctx.strokeStyle = "#1a1a1a";
+        ctx.lineWidth = Math.max(2, r * 0.13);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(fx - r * 0.45, cy - r * 0.55);
+        ctx.lineTo(fx + r * 0.15, cy - r * 0.25);
+        ctx.stroke();
+
+        // Eye socket (dark)
+        ctx.fillStyle = "#1a1a1a";
+        ctx.beginPath();
+        ctx.arc(fx - r * 0.1, cy - r * 0.1, r * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye white
+        ctx.fillStyle = "#fff8e6";
+        ctx.beginPath();
+        ctx.arc(fx - r * 0.1, cy - r * 0.1, r * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pupil (glares toward cowboy — left side of eye)
+        ctx.fillStyle = "#e61e1e";
+        ctx.beginPath();
+        ctx.arc(fx - r * 0.22, cy - r * 0.1, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        // Highlight
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(fx - r * 0.25, cy - r * 0.13, r * 0.035, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Open snarling mouth (pointing left)
+        ctx.fillStyle = "#2a0a0a";
+        ctx.beginPath();
+        ctx.moveTo(fx - r * 0.55, cy + r * 0.2);
+        ctx.lineTo(fx + r * 0.25, cy + r * 0.1);
+        ctx.lineTo(fx + r * 0.3, cy + r * 0.5);
+        ctx.lineTo(fx - r * 0.4, cy + r * 0.55);
+        ctx.closePath();
+        ctx.fill();
+
+        // Jagged fangs (top row)
+        ctx.fillStyle = "#fff8e6";
+        const teeth = 5;
+        for (let i = 0; i < teeth; i++) {
+          const t = i / (teeth - 1);
+          const tx = fx - r * 0.5 + t * r * 0.75;
+          const ty = cy + r * 0.15 + t * r * -0.05;
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(tx + r * 0.08, ty);
+          ctx.lineTo(tx + r * 0.04, ty + r * 0.18);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // Bottom fangs
+        for (let i = 0; i < teeth - 1; i++) {
+          const t = (i + 0.5) / (teeth - 1);
+          const tx = fx - r * 0.5 + t * r * 0.75;
+          const ty = cy + r * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(tx + r * 0.08, ty);
+          ctx.lineTo(tx + r * 0.04, ty - r * 0.15);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
 
       function drawBullet(b) {
@@ -2296,6 +2455,38 @@
 
         // Draw aim line
         drawAimLine();
+
+        // Draw spawn telegraphs (warning markers on the right edge)
+        for (const q of ballSpawnQueue) {
+          const cfg = diffConfig[settings.difficulty];
+          const showAfter = Math.min(q.maxDelay, cfg.telegraphFrames);
+          if (q.delay > showAfter) continue;
+          const progress = 1 - q.delay / showAfter;
+          const radius = q.size * 15;
+          const edgeX = canvas.width - 18;
+          const pulse = 0.55 + 0.45 * Math.sin(q.delay * 0.35);
+          const color = q.size === 3 ? "#4ecdc4" : "#e94560";
+          ctx.save();
+          ctx.globalAlpha = 0.35 + 0.5 * progress;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.arc(edgeX, q.y, radius * (0.6 + 0.4 * pulse), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Inward arrow
+          ctx.globalAlpha = 0.6 + 0.4 * progress;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          const ax = edgeX + 10;
+          ctx.moveTo(ax, q.y);
+          ctx.lineTo(ax + 10, q.y - 6);
+          ctx.lineTo(ax + 10, q.y + 6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
 
         // Draw balls
         for (const ball of balls) {
