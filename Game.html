@@ -29,8 +29,9 @@
 
       #gameContainer {
         position: relative;
-        width: 1200px;
+        width: 1600px;
         height: 700px;
+        max-width: 100vw;
         background: #2a2a3e;
         border: 3px solid #0f3460;
         border-radius: 8px;
@@ -386,7 +387,7 @@
   <body>
     <div id="gameContainer">
       <!-- Canvas for gameplay -->
-      <canvas id="gameCanvas" width="1200" height="700" tabindex="0"></canvas>
+      <canvas id="gameCanvas" width="1600" height="700" tabindex="0"></canvas>
 
       <!-- Screen 1: Main Menu -->
       <div id="mainMenu" class="screen active">
@@ -735,8 +736,8 @@
       ];
 
       let cowboy = {
-        x: 60,
-        y: 530, // fixed bottom-left position
+        x: 210,
+        y: 530, // fixed bottom-left position, standing in front of saloon
         width: 50,
         height: 90,
         speed: 0,
@@ -749,6 +750,20 @@
       };
 
       let mouse = { x: 600, y: 350 };
+
+      // Saloon stands behind the cowboy. Balls that fly past the cowboy
+      // smash into the saloon front wall instead of vanishing offscreen,
+      // giving visual feedback for "missed" shots / lost lives.
+      let saloon = {
+        x: 0,
+        y: 260,
+        width: 180,
+        height: 360,
+        frontX: 180, // x of the saloon's front wall (where balls impact)
+        damage: 0,   // accumulates with each impact; drives crack visuals
+        shakeTimer: 0,
+        impacts: [], // short-lived impact markers: {x,y,life}
+      };
       let bullets = [];
       let balls = [];
       let particles = [];
@@ -991,6 +1006,9 @@
         balls = [];
         particles = [];
         ballSpawnQueue = [];
+        saloon.damage = 0;
+        saloon.impacts = [];
+        saloon.shakeTimer = 0;
         screenShake = 0;
 
         canvas.style.display = "block";
@@ -1729,10 +1747,10 @@
             playSound("ricochet");
             spawnParticles(b.x, b.y, "#f0e68c", 3);
           }
-          if (b.x <= 0) {
+          if (b.x <= saloon.frontX) {
             b.vx *= -1;
             b.bounces++;
-            b.x = 1;
+            b.x = saloon.frontX + 1;
             playSound("ricochet");
             spawnParticles(b.x, b.y, "#f0e68c", 3);
           }
@@ -1795,9 +1813,13 @@
           const dy = ball.y - cy;
           const dist = Math.sqrt(dx * dx + dy * dy);
           const hitCowboy = dist < ball.radius + 25;
-          const passedCowboy = ball.x - ball.radius <= 0;
+          const hitSaloon =
+            !hitCowboy && ball.x - ball.radius <= saloon.frontX;
 
-          if (hitCowboy || passedCowboy) {
+          if (hitCowboy || hitSaloon) {
+            // Impact position for effects
+            const impactX = hitSaloon ? saloon.frontX : ball.x;
+            const impactY = ball.y;
             // Remove the ball
             balls.splice(i, 1);
 
@@ -1806,19 +1828,35 @@
               continue;
             }
 
+            if (hitSaloon) {
+              saloon.damage++;
+              saloon.shakeTimer = 12;
+              saloon.impacts.push({ x: impactX, y: impactY, life: 30 });
+              spawnParticles(impactX, impactY, "#8b5a2b", 10);
+              spawnParticles(impactX, impactY, "#d4c8a8", 6);
+            } else {
+              spawnParticles(cx, cy, "#e94560", 8);
+            }
+
             if (!game.invincible) {
               game.lives--;
               game.invincible = true;
               game.invincibleTimer = 90;
               playSound("hurt");
-              screenShake = 10;
-              spawnParticles(cx, cy, "#e94560", 8);
+              screenShake = hitSaloon ? 8 : 10;
               if (game.lives <= 0) {
                 gameOver();
                 return;
               }
             }
           }
+        }
+
+        // Saloon shake + impact fade
+        if (saloon.shakeTimer > 0) saloon.shakeTimer--;
+        for (let i = saloon.impacts.length - 1; i >= 0; i--) {
+          saloon.impacts[i].life--;
+          if (saloon.impacts[i].life <= 0) saloon.impacts.splice(i, 1);
         }
 
         // Tick spawn queue
@@ -1858,6 +1896,139 @@
       }
 
       // ==================== DRAW ====================
+      function drawSaloon() {
+        const groundY = canvas.height - 80;
+        const bx = saloon.x;
+        const bw = saloon.width;
+        const topY = saloon.y;
+        const bh = groundY - topY;
+
+        ctx.save();
+        if (saloon.shakeTimer > 0) {
+          const s = saloon.shakeTimer / 12;
+          ctx.translate((Math.random() - 0.5) * 4 * s, (Math.random() - 0.5) * 4 * s);
+        }
+
+        // Main wooden facade
+        ctx.fillStyle = "#8b5a2b";
+        ctx.fillRect(bx, topY, bw, bh);
+
+        // Vertical plank seams
+        ctx.strokeStyle = "#5a3a1a";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 8; i++) {
+          const px = bx + (bw / 8) * i;
+          ctx.beginPath();
+          ctx.moveTo(px, topY + 40);
+          ctx.lineTo(px, groundY);
+          ctx.stroke();
+        }
+
+        // Porch roof (slanted plank) sticking out to the right
+        ctx.fillStyle = "#6a4320";
+        ctx.beginPath();
+        ctx.moveTo(bx, topY);
+        ctx.lineTo(bx + bw + 30, topY + 20);
+        ctx.lineTo(bx + bw + 30, topY + 35);
+        ctx.lineTo(bx, topY + 25);
+        ctx.closePath();
+        ctx.fill();
+
+        // Support post at front corner
+        ctx.fillStyle = "#5a3a1a";
+        ctx.fillRect(bx + bw + 24, topY + 32, 6, groundY - topY - 32);
+
+        // Big sign board
+        const signY = topY + 45;
+        ctx.fillStyle = "#3a2510";
+        ctx.fillRect(bx + 10, signY, bw - 20, 42);
+        ctx.fillStyle = "#e8c76a";
+        ctx.font = "bold 20px 'Courier New', monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("SALOON", bx + bw / 2, signY + 21);
+
+        // Windows with cross frames
+        const winY = signY + 60;
+        const winH = 55;
+        const winW = 45;
+        for (let i = 0; i < 2; i++) {
+          const wx = bx + 20 + i * 80;
+          ctx.fillStyle = "#2a3a4a";
+          ctx.fillRect(wx, winY, winW, winH);
+          ctx.strokeStyle = "#3a2510";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(wx, winY, winW, winH);
+          ctx.beginPath();
+          ctx.moveTo(wx + winW / 2, winY);
+          ctx.lineTo(wx + winW / 2, winY + winH);
+          ctx.moveTo(wx, winY + winH / 2);
+          ctx.lineTo(wx + winW, winY + winH / 2);
+          ctx.stroke();
+        }
+
+        // Swinging saloon doors on the right side (front)
+        const doorY = winY + winH + 15;
+        const doorH = groundY - doorY;
+        const doorW = 48;
+        const doorX = bx + bw - doorW - 6;
+        ctx.fillStyle = "#6a4320";
+        ctx.fillRect(doorX, doorY, doorW, doorH);
+        ctx.strokeStyle = "#3a2510";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(doorX + doorW / 2, doorY);
+        ctx.lineTo(doorX + doorW / 2, doorY + doorH);
+        ctx.stroke();
+        // Horizontal slats on doors
+        for (let i = 1; i < 4; i++) {
+          const sy = doorY + (doorH / 4) * i;
+          ctx.beginPath();
+          ctx.moveTo(doorX, sy);
+          ctx.lineTo(doorX + doorW, sy);
+          ctx.stroke();
+        }
+
+        // Cracks based on accumulated damage (front wall only)
+        const crackCount = Math.min(saloon.damage, 12);
+        ctx.strokeStyle = "#1a0a05";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < crackCount; i++) {
+          // Deterministic pseudo-random crack positions
+          const seed = i * 127.3;
+          const cx = bx + bw - 10 - ((Math.sin(seed) + 1) * 0.5) * (bw - 20);
+          const cy = topY + 30 + ((Math.cos(seed * 1.7) + 1) * 0.5) * (bh - 50);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(seed * 2.1) * 18, cy + Math.sin(seed * 2.1) * 18);
+          ctx.lineTo(cx + Math.cos(seed * 3.3) * 28, cy + Math.sin(seed * 3.3) * 12);
+          ctx.stroke();
+        }
+
+        // Live impact flashes
+        for (const imp of saloon.impacts) {
+          const a = imp.life / 30;
+          ctx.save();
+          ctx.globalAlpha = a;
+          ctx.fillStyle = "#ffeb99";
+          ctx.beginPath();
+          ctx.arc(imp.x, imp.y, 14 * (1.2 - a), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#1a0a05";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let k = 0; k < 5; k++) {
+            const ang = (k / 5) * Math.PI * 2;
+            ctx.moveTo(imp.x, imp.y);
+            ctx.lineTo(imp.x + Math.cos(ang) * 12, imp.y + Math.sin(ang) * 12);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        ctx.restore();
+      }
+
       function drawCowboy() {
         const x = cowboy.x;
         const y = cowboy.y;
@@ -2452,6 +2623,9 @@
         // Desert background details
         ctx.fillStyle = "#d4c8a8";
         ctx.fillRect(0, canvas.height - 120, canvas.width, 40);
+
+        // Draw saloon behind cowboy
+        drawSaloon();
 
         // Draw aim line
         drawAimLine();
