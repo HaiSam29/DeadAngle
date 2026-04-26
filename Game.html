@@ -170,11 +170,6 @@
         gap: 20px;
       }
 
-      /* Tutorial overlay (in-game) */
-      .tutorial-overlay-msg {
-        /* styled via canvas */
-      }
-
       /* Settings Screen */
       .settings-screen {
         background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
@@ -203,6 +198,7 @@
       }
       input[type="range"] {
         -webkit-appearance: none;
+        appearance: none;
         width: 150px;
         height: 8px;
         background: #16213e;
@@ -467,7 +463,9 @@
         <div class="controls-list">
           <h3>CONTROLS</h3>
           <div class="control-row"><span class="key">&uarr; / &darr;</span><span>AIM UP / DOWN</span></div>
+          <div class="control-row"><span class="key">MOUSE</span><span>AIM</span></div>
           <div class="control-row"><span class="key">SPACE</span><span>SHOOT</span></div>
+          <div class="control-row"><span class="key">CLICK</span><span>SHOOT</span></div>
           <div class="control-row"><span class="key">R</span><span>RELOAD</span></div>
           <div class="control-row"><span class="key">ESC</span><span>PAUSE</span></div>
         </div>
@@ -504,7 +502,9 @@
         <div class="controls-list">
           <h3>CONTROLS</h3>
           <div class="control-row"><span class="key">&uarr; / &darr;</span><span>AIM UP / DOWN</span></div>
+          <div class="control-row"><span class="key">MOUSE</span><span>AIM</span></div>
           <div class="control-row"><span class="key">SPACE</span><span>SHOOT</span></div>
+          <div class="control-row"><span class="key">CLICK</span><span>SHOOT</span></div>
           <div class="control-row"><span class="key">R</span><span>RELOAD</span></div>
           <div class="control-row"><span class="key">ESC</span><span>PAUSE</span></div>
         </div>
@@ -588,31 +588,31 @@
 
       const diffConfig = {
         easy: {
-          lives: 7,
-          ballSpeed: 1.5,
-          maxBalls: 3,
-          ballsPerRound: 1,
-          ammo: 10,
-          spawnInterval: 60,
-          telegraphFrames: 55,
+          lives: 6,
+          ballSpeed: 2.4,
+          maxBalls: 4,
+          ballsPerRound: 2,
+          ammo: 6,
+          spawnInterval: 48,
+          telegraphFrames: 50,
         },
         medium: {
-          lives: 5,
-          ballSpeed: 2.3,
-          maxBalls: 5,
-          ballsPerRound: 2,
-          ammo: 8,
-          spawnInterval: 45,
-          telegraphFrames: 45,
-        },
-        hard: {
-          lives: 3,
-          ballSpeed: 3.1,
-          maxBalls: 7,
+          lives: 6,
+          ballSpeed: 3.2,
+          maxBalls: 6,
           ballsPerRound: 3,
           ammo: 6,
-          spawnInterval: 30,
-          telegraphFrames: 35,
+          spawnInterval: 36,
+          telegraphFrames: 40,
+        },
+        hard: {
+          lives: 6,
+          ballSpeed: 4.0,
+          maxBalls: 8,
+          ballsPerRound: 4,
+          ammo: 6,
+          spawnInterval: 28,
+          telegraphFrames: 32,
         },
       };
 
@@ -683,15 +683,15 @@
       const tutorialSteps = [
         {
           title: "STAP 1: RICHTEN",
-          msg: "Gebruik \u2191 en \u2193 om je wapen\nomhoog en omlaag te richten.\nProbeer beide richtingen!",
-          hint: "Druk \u2191 \u00e9n \u2193!",
+          msg: "Gebruik \u2191 en \u2193 \u00f3f beweeg je MUIS\nom je wapen te richten.\nProbeer omhoog \u00e9n omlaag!",
+          hint: "Richt omhoog \u00e9n omlaag!",
           waitFor: "aim",
           successMsg: "Goed gericht!",
         },
         {
           title: "STAP 2: SCHIETEN",
-          msg: "Druk op SPATIE om te schieten.\nJe kogels kaatsen tegen muren!",
-          hint: "Druk op SPATIE!",
+          msg: "Druk op SPATIE of KLIK met de muis\nom te schieten.\nJe kogels kaatsen tegen muren!",
+          hint: "Druk SPATIE of KLIK!",
           waitFor: "shoot",
           successMsg: "Mooi schot!",
         },
@@ -756,7 +756,7 @@
         aimDown: false,
       };
 
-      let mouse = { x: 600, y: 350 };
+      let mouse = { x: 600, y: 350, aiming: false, wasAiming: false };
 
       // Saloon stands behind the cowboy. Balls that fly past the cowboy
       // smash into the saloon front wall instead of vanishing offscreen,
@@ -1152,6 +1152,10 @@
         }
         tutorial.phase = "play";
         tutorial.msgTimer = 0;
+        // Baseline for the aim step: only credit aim direction relative to
+        // wherever the cursor was when play started, so a cursor that
+        // already happens to be high/low doesn't auto-complete a side.
+        tutorial.aimBaseline = cowboy.aimAngle;
       }
 
       function finishTutorial() {
@@ -1162,6 +1166,9 @@
         bullets = [];
         particles = [];
         ballSpawnQueue = [];
+        powerups = [];
+        floatingTexts = [];
+        game.slowMoTimer = 0;
 
         // Replayed from Settings: just go back, don't start a new round.
         if (returnTo) {
@@ -1465,7 +1472,7 @@
 
         if (tutorial.phase === "play") {
           // Small hint bar at top during gameplay
-          const boxW = 500;
+          const boxW = 620;
           const boxH = 50;
           const boxX = (canvas.width - boxW) / 2;
           const boxY = 60;
@@ -1488,9 +1495,11 @@
           let hintText = step.hint;
           if (step.waitFor === "aim") {
             if (tutorial.aimedUp && !tutorial.aimedDown) {
-              hintText = "Goed! Druk nu \u2193 (omlaag)";
+              hintText = "Goed! Nu omlaag";
             } else if (tutorial.aimedDown && !tutorial.aimedUp) {
-              hintText = "Goed! Druk nu \u2191 (omhoog)";
+              hintText = "Goed! Nu omhoog";
+            } else if (!tutorial.aimedUp && !tutorial.aimedDown) {
+              hintText = "Beweeg omhoog of omlaag (pijltjes of muis)";
             }
           }
 
@@ -1740,6 +1749,14 @@
       }
 
       function restartGame() {
+        // If the player hits restart while the tutorial is running,
+        // restart the tutorial from step 1 instead of jumping into a
+        // normal round.
+        if (tutorial.active) {
+          const returnTo = tutorial.returnTo;
+          startTutorial(returnTo);
+          return;
+        }
         startGame();
       }
 
@@ -1779,14 +1796,42 @@
         // Tutorial update
         updateTutorial();
 
-        // Aim angle (arrow keys up/down)
-        if (cowboy.aimUp) { cowboy.aimAngle -= cowboy.aimSpeed; tutorial.aimedUp = true; }
-        if (cowboy.aimDown) { cowboy.aimAngle += cowboy.aimSpeed; tutorial.aimedDown = true; }
+        // Aim angle: mouse takes precedence when active, otherwise arrow keys
+        const mouseJustActivated = mouse.aiming && !mouse.wasAiming;
+        if (mouse.aiming) {
+          const gunX = cowboy.x + 40;
+          const gunY = cowboy.y - 15;
+          cowboy.aimAngle = Math.atan2(mouse.y - gunY, mouse.x - gunX);
+          // Re-baseline the tutorial credit check whenever the player
+          // (re)enters mouse-aim mode, so the initial snap to wherever
+          // the cursor sits is treated as "neutral".
+          if (mouseJustActivated) tutorial.aimBaseline = cowboy.aimAngle;
+        } else {
+          if (cowboy.aimUp) { cowboy.aimAngle -= cowboy.aimSpeed; tutorial.aimedUp = true; }
+          if (cowboy.aimDown) { cowboy.aimAngle += cowboy.aimSpeed; tutorial.aimedDown = true; }
+        }
         // Clamp aim angle: -80deg to +80deg (roughly forward-facing)
         cowboy.aimAngle = Math.max(
           -Math.PI * 0.44,
           Math.min(Math.PI * 0.44, cowboy.aimAngle),
         );
+        // Tutorial credit for mouse aiming: only during the active play
+        // phase of the aim step, so cursor wiggles during intro/success
+        // popups don't count. Require a clearly up / clearly down aim.
+        if (
+          mouse.aiming &&
+          !mouseJustActivated &&
+          tutorial.active &&
+          tutorial.phase === "play" &&
+          tutorialSteps[tutorial.step] &&
+          tutorialSteps[tutorial.step].waitFor === "aim"
+        ) {
+          const AIM_THRESHOLD = 0.10;
+          const base = tutorial.aimBaseline || 0;
+          if (cowboy.aimAngle <= base - AIM_THRESHOLD) tutorial.aimedUp = true;
+          if (cowboy.aimAngle >= base + AIM_THRESHOLD) tutorial.aimedDown = true;
+        }
+        mouse.wasAiming = mouse.aiming;
 
         // Reload
         if (game.reloading) {
@@ -3014,21 +3059,6 @@
         // Draw cowboy
         drawCowboy();
 
-        // Floating label texts (powerup pickup labels)
-        for (const t of floatingTexts) {
-          ctx.save();
-          ctx.globalAlpha = Math.min(1, t.life / 30);
-          ctx.fillStyle = t.color;
-          ctx.strokeStyle = "#000";
-          ctx.lineWidth = 4;
-          ctx.font = "bold 16px 'Press Start 2P', monospace";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.strokeText(t.text, t.x, t.y);
-          ctx.fillText(t.text, t.x, t.y);
-          ctx.restore();
-        }
-
         // Slow-motion overlay: purple tint + vignette + scanlines
         if (game.slowMoTimer > 0) {
           const fade = Math.min(1, game.slowMoTimer / 45);
@@ -3046,16 +3076,6 @@
           ctx.globalAlpha = 0.5 * fade;
           ctx.fillStyle = vg;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          // Corner label
-          ctx.globalAlpha = 0.9 * fade;
-          ctx.fillStyle = "#e0c8ff";
-          ctx.strokeStyle = "#000";
-          ctx.lineWidth = 4;
-          ctx.font = "bold 22px 'Press Start 2P', monospace";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          ctx.strokeText("SLOW-MO", canvas.width / 2, 20);
-          ctx.fillText("SLOW-MO", canvas.width / 2, 20);
           ctx.restore();
         }
 
@@ -3064,6 +3084,22 @@
 
         // Draw tutorial overlay
         drawTutorialOverlay();
+
+        // Floating label texts (powerup pickup labels) — drawn last so they
+        // sit on top of HUD and tutorial bars and are always visible.
+        for (const t of floatingTexts) {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, t.life / 30);
+          ctx.fillStyle = t.color;
+          ctx.strokeStyle = "#000";
+          ctx.lineWidth = 4;
+          ctx.font = "bold 16px 'Press Start 2P', monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.strokeText(t.text, t.x, t.y);
+          ctx.fillText(t.text, t.x, t.y);
+          ctx.restore();
+        }
 
         ctx.restore();
       }
@@ -3079,8 +3115,8 @@
 
       // ==================== INPUT ====================
       // Controls:
-      //   Arrow Up/Down = aim gun up/down
-      //   SPACE        = shoot
+      //   Arrow Up/Down OR mouse move = aim gun
+      //   SPACE OR left mouse click   = shoot
       //   R            = reload
       //   ESC          = pause
 
@@ -3141,13 +3177,15 @@
           return;
         }
 
-        // Aim (Arrow keys)
+        // Aim (Arrow keys) — switches off mouse-aim mode
         if (e.key === "ArrowUp") {
           cowboy.aimUp = true;
+          mouse.aiming = false;
           e.preventDefault();
         }
         if (e.key === "ArrowDown") {
           cowboy.aimDown = true;
+          mouse.aiming = false;
           e.preventDefault();
         }
 
@@ -3168,16 +3206,24 @@
         if (e.key === "ArrowDown") cowboy.aimDown = false;
       });
 
-      // Mouse aiming still works as alternative
+      // Mouse aiming: any mouse movement over the canvas activates mouse-aim mode.
+      // Blocked entirely during tutorial popups (intro/success/exit) so the
+      // cursor can't drive the aim while the player is reading.
       canvas.addEventListener("mousemove", (e) => {
+        if (tutorial.active && tutorial.phase !== "play") return;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         mouse.x = (e.clientX - rect.left) * scaleX;
         mouse.y = (e.clientY - rect.top) * scaleY;
+        mouse.aiming = true;
       });
 
-      // Click on canvas: pause button or bottom bar only (shooting is via SPACE)
+      canvas.addEventListener("mouseleave", () => {
+        mouse.aiming = false;
+      });
+
+      // Click on canvas: pause button, bottom bar, or shoot
       canvas.addEventListener("click", (e) => {
         if (!game.running) return;
 
@@ -3201,7 +3247,35 @@
             reload(true);
             return;
           }
+          return;
         }
+
+        if (game.paused) return;
+
+        // Tutorial: clicks behave like keys for intro/exit/success phases
+        if (tutorial.active && tutorial.phase === "exit") {
+          finishTutorial();
+          return;
+        }
+        if (tutorial.active && tutorial.phase === "intro") {
+          const step = tutorialSteps[tutorial.step];
+          if (step.hudCallouts && tutorial.calloutIndex < HUD_CALLOUTS.length - 1) {
+            tutorial.calloutIndex++;
+            tutorial.flashTimer = 0;
+          } else if (step.waitFor === "info") {
+            advanceTutorial();
+          } else {
+            startStepPlay();
+          }
+          return;
+        }
+        if (tutorial.active && tutorial.phase === "success") return;
+
+        // Otherwise: shoot (mouse position drives the aim)
+        mouse.x = clickX;
+        mouse.y = clickY;
+        mouse.aiming = true;
+        shoot();
       });
 
       canvas.addEventListener("contextmenu", (e) => e.preventDefault());
