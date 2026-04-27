@@ -3240,14 +3240,15 @@
           return;
         }
 
-        // Check bottom bar buttons
+        // Check bottom bar buttons. The bar doubles as the ground, so
+        // clicks that miss a button must still fall through to shoot()
+        // — otherwise aiming down at the ground to ricochet swallows the click.
         const barY = canvas.height - 80;
         if (clickY >= barY) {
           if (clickX >= 320 && clickX <= 360) {
             reload(true);
             return;
           }
-          return;
         }
 
         if (game.paused) return;
